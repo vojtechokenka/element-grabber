@@ -1,0 +1,8 @@
+node_modules/
+out/
+preview/
+store/*.zip
+store/NAVOD.md
+store/listing.md
+Thumbs.db
+.DS_Store

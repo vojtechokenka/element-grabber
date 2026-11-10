@@ -1,0 +1,10 @@
+{
+  "name": "element-grabber-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tests and asset scripts for the Element Grabber extension",
+  "license": "MIT",
+  "dependencies": {
+    "playwright-core": "^1.65.0"
+  }
+}
