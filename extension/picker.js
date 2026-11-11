@@ -150,6 +150,7 @@
   item('image', ['mouse'], 'Click to copy as PNG');
   item('text', [MAC ? '⌘' : 'Alt', 'mouse'], 'To copy text');
   item('', ['up', 'down'], 'Go through HTML');
+  item('', ['Del'], 'Remove');
   item('', ['Esc'], 'Close');
 
   let hit = null;
@@ -162,6 +163,7 @@
   let toastTimer = 0;
   let lastShotAt = 0;
   const patched = new Map();
+  const removed = [];
 
   const swallow = (event) => {
     event.preventDefault();
@@ -495,6 +497,35 @@
     return result;
   };
 
+  const remove = () => {
+    if (current === document.documentElement || current === document.body) {
+      flash('Cannot remove the whole page');
+      return;
+    }
+    removed.push({
+      node: current,
+      value: current.style.getPropertyValue('display'),
+      priority: current.style.getPropertyPriority('display'),
+    });
+    current.style.setProperty('display', 'none', 'important');
+    hit = null;
+    current = null;
+    trail = [];
+    retarget();
+  };
+
+  const restore = () => {
+    const last = removed.pop();
+    if (!last) return;
+    if (last.value) last.node.style.setProperty('display', last.value, last.priority);
+    else last.node.style.removeProperty('display');
+    if (!last.node.getAttribute('style')) last.node.removeAttribute('style');
+    hit = null;
+    current = last.node;
+    trail = [];
+    draw();
+  };
+
   const wantsText = (event) => (MAC ? event.metaKey : event.altKey);
 
   const setMode = (event) => ui.classList.toggle('alt', wantsText(event));
@@ -533,8 +564,16 @@
       swallow(event);
       return;
     }
+    if (event.key.toLowerCase() === 'z' && (MAC ? event.metaKey : event.ctrlKey)) {
+      swallow(event);
+      restore();
+      return;
+    }
     if (!current) return;
-    if (event.key === 'ArrowUp') {
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      swallow(event);
+      remove();
+    } else if (event.key === 'ArrowUp') {
       swallow(event);
       const parent = parentOf(current);
       if (!parent) return;
