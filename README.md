@@ -6,7 +6,7 @@ A Chrome extension that copies any element on a page as a PNG, or grabs its text
 
 ## Install
 
-**Chrome Web Store:** in review. The link will be added here once it is published.
+**Chrome Web Store:** [Element Grabber](https://chromewebstore.google.com/detail/element-grabber/fgphnnbonjgnpheeegcalfjjgcplhlkd)
 
 **From source:**
 
@@ -24,6 +24,8 @@ It works in Chrome and other Chromium browsers such as Edge, Brave and Arc.
 | Click | Copies the element as a PNG |
 | `Alt` + click (`Cmd` + click on a Mac) | Copies the element's text |
 | `↑` / `↓` | Selects the parent or the child element |
+| `Delete` or `Backspace` | Removes the element from the page |
+| `Ctrl+Z` (`Cmd+Z` on a Mac) | Brings back the last removed element |
 | `Esc` | Closes the picker or cancels a running capture |
 
 You can change the shortcut at `chrome://extensions/shortcuts`.
@@ -33,6 +35,7 @@ You can change the shortcut at `chrome://extensions/shortcuts`.
 - Copies an element as a PNG, even when it is taller or wider than the window. The page scrolls on its own and the pieces are stitched together.
 - Copies text from places where you cannot select it, such as text inside a link or a button.
 - Cleans the copied text: non-breaking spaces and invisible characters become plain spaces.
+- Removes what you do not want in the shot, such as a cookie bar or a badge. Undo brings it back, and so does reloading the page.
 - Works on top of modals and inside scrolling panels.
 
 ## How it works
@@ -40,6 +43,7 @@ You can change the shortcut at `chrome://extensions/shortcuts`.
 - Nothing runs on a page until you start the picker. The extension only asks for `activeTab` and `scripting`.
 - A PNG is a capture of the visible tab, cropped to the element. For a bigger element the extension scrolls the page and any scrolling panel around the element, captures it in tiles and puts them together. Fixed and sticky bars are hidden while it shoots, then everything is put back.
 - Text is the rendered text of the element.
+- Removing an element only hides it on the page you are looking at. Nothing is changed on the site itself.
 
 Good to know:
 

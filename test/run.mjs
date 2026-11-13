@@ -464,6 +464,43 @@ try {
   await page.keyboard.press('Escape');
   const cancelTook = await waitDone(5000);
   check('15 esc cancels a running capture and restores', cancelTook >= 0 && same(await scrollOf(), [0, 0]), { cancelTook, scroll: await scrollOf() });
+
+  await page.goto(`${base}/`);
+  await page.bringToFront();
+  const displayOf = (id) => page.evaluate((key) => getComputedStyle(document.getElementById(key)).display, id);
+
+  await activate();
+  await page.mouse.move(140, 80);
+  await shot('16-hint-with-remove', { x: 100, y: 630, width: 800, height: 70 });
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(150);
+  check('16 delete hides the element, picker stays open', (await displayOf('red')) === 'none' && (await isActive()), await displayOf('red'));
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  const back = await page.evaluate(() => ({ display: getComputedStyle(document.getElementById('red')).display, style: document.getElementById('red').getAttribute('style') }));
+  check('16 undo brings it back and leaves no style behind', back.display === 'block' && back.style === null, back);
+
+  await page.mouse.move(800, 600);
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(150);
+  const pageShown = await page.evaluate(() => getComputedStyle(document.body).display !== 'none' && getComputedStyle(document.documentElement).display !== 'none');
+  check('16 the page itself cannot be removed', pageShown && (await isActive()));
+  await page.waitForTimeout(1800);
+
+  const cardBefore = await centerOf('card');
+  const mail = await centerOf('mail');
+  await page.mouse.move(mail.x, mail.y);
+  await page.keyboard.press('Backspace');
+  await page.waitForTimeout(150);
+  const cardAfter = await centerOf('card');
+  check('16 backspace removes too, parent shrinks', (await displayOf('mail')) === 'none' && cardAfter.h < cardBefore.h, { before: cardBefore.h, after: cardAfter.h });
+  await sentinel();
+  await page.mouse.move(120, 200);
+  await page.keyboard.press('ArrowUp');
+  await imageClick(120, 200);
+  const i16 = await clipImage();
+  check('16 png of the parent comes without the removed child', Math.abs(i16.w - cardAfter.w * dsf) <= 1 && Math.abs(i16.h - cardAfter.h * dsf) <= 1, { w: i16.w, h: i16.h, card: cardAfter });
+  check('16 removed element stays hidden after the picker closes', (await displayOf('mail')) === 'none' && !(await isActive()));
 } catch (error) {
   check('run completed', false, String(error?.stack || error));
 } finally {
