@@ -23,6 +23,7 @@ It works in Chrome and other Chromium browsers such as Edge, Brave and Arc.
 | `Ctrl+Shift+X` (`Cmd+Shift+X` on a Mac) or the toolbar icon | Starts the picker |
 | Click | Copies the element as a PNG |
 | `Alt` + click (`Cmd` + click on a Mac) | Copies the element's text |
+| `Shift` + click | Locks the selection so you can drag its edges. `Enter` or a click inside then copies it as a PNG, `Esc` or a click outside goes back |
 | `↑` / `↓` | Selects the parent or the child element |
 | `Delete` or `Backspace` | Removes the element from the page |
 | `Ctrl+Z` (`Cmd+Z` on a Mac) | Brings back the last removed element |
@@ -33,6 +34,7 @@ You can change the shortcut at `chrome://extensions/shortcuts`.
 ## What it does
 
 - Copies an element as a PNG, even when it is taller or wider than the window. The page scrolls on its own and the pieces are stitched together.
+- Lets you resize the selection before the shot. Make it smaller to crop the element, or pull it past the element to take its surroundings too.
 - Copies text from places where you cannot select it, such as text inside a link or a button.
 - Cleans the copied text: non-breaking spaces and invisible characters become plain spaces.
 - Removes what you do not want in the shot, such as a cookie bar or a badge. Undo brings it back, and so does reloading the page.

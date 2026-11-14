@@ -12,11 +12,35 @@
     .ui.alt .box { background: rgba(20, 110, 245, 0.12); }
     .label { position: absolute; left: -1px; bottom: calc(100% + 4px); display: flex; gap: 6px; padding: 5px 7px; border-radius: 6px; background: #146ef5; font-size: 11px; font-weight: 600; white-space: nowrap; }
     .label.inside { top: 4px; bottom: auto; left: 4px; }
+    .ui.shift .label:not(.inside), .ui.locked .label:not(.inside) { bottom: calc(100% + 8px); }
+    .ui.shift .label.inside, .ui.locked .label.inside { top: 8px; left: 8px; }
     .size { color: rgba(255, 255, 255, 0.6); font-weight: 500; }
+    .label.free .name { display: none; }
+    .label.free .size { color: #fff; }
+    .grip { position: absolute; display: none; }
+    .ui.shift .grip, .ui.locked .grip { display: block; }
+    .ui.locked .grip { pointer-events: auto; }
+    .ui.dragging .grip { pointer-events: none; }
+    .grip::after { content: ""; position: absolute; left: 50%; top: 50%; box-sizing: border-box; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border: 1px solid #146ef5; background: #fff; }
+    .grip.n, .grip.s { left: 8px; right: 8px; height: 11px; cursor: ns-resize; }
+    .grip.w, .grip.e { top: 8px; bottom: 8px; width: 11px; cursor: ew-resize; }
+    .grip.n { top: -6px; }
+    .grip.s { bottom: -6px; }
+    .grip.w { left: -6px; }
+    .grip.e { right: -6px; }
+    .grip.nw, .grip.ne, .grip.sw, .grip.se { width: 15px; height: 15px; }
+    .grip.nw, .grip.se { cursor: nwse-resize; }
+    .grip.ne, .grip.sw { cursor: nesw-resize; }
+    .grip.nw { left: -8px; top: -8px; }
+    .grip.ne { right: -8px; top: -8px; }
+    .grip.sw { left: -8px; bottom: -8px; }
+    .grip.se { right: -8px; bottom: -8px; }
     .bar { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; box-sizing: border-box; max-width: calc(100vw - 24px); padding: 5px; border-radius: 12px; background: #146ef5; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); white-space: nowrap; animation: rise 0.18s ease-out; }
     .bar.top { top: 20px; bottom: auto; }
     .item { display: flex; align-items: center; gap: 8px; padding: 5px 10px 5px 5px; border-radius: 8px; color: rgba(255, 255, 255, 0.6); }
-    .ui:not(.alt) .item.image, .ui.alt .item.text { background: rgba(255, 255, 255, 0.1); color: #fff; }
+    .hint .item.tune, .ui.locked .hint .item:not(.tune) { display: none; }
+    .ui.locked .hint .item.tune { display: flex; }
+    .ui:not(.alt):not(.shift) .item.image, .ui.alt .item.text, .ui.shift .item.area, .item.copy { background: rgba(255, 255, 255, 0.1); color: #fff; }
     .keys { display: flex; gap: 3px; }
     .key { display: flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 11px; font-weight: 600; }
     .key svg { display: block; }
@@ -36,6 +60,8 @@
     @keyframes rise { from { opacity: 0; transform: translate(-50%, 6px); } }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .bar, .spinner { animation: none; } }
+    @media (max-width: 820px) { .hint .item.close { display: none; } }
+    @media (max-width: 745px) { .hint .item.remove { display: none; } }
   `;
 
   const PAGE_CSS = `
@@ -68,6 +94,9 @@
   const MAX_SIDE = 32000;
   const MAX_AREA = 2.5e8;
   const PROGRESS_STRIP = 80;
+  const MIN_SIDE = 8;
+  const NONE = { left: 0, top: 0, right: 0, bottom: 0 };
+  const GRIPS = { n: ['top'], s: ['bottom'], w: ['left'], e: ['right'], nw: ['left', 'top'], ne: ['right', 'top'], sw: ['left', 'bottom'], se: ['right', 'bottom'] };
   const MAC = /mac/i.test(navigator.userAgentData?.platform || navigator.platform || '');
 
   const make = (className, parent, text) => {
@@ -121,6 +150,8 @@
   const label = make('label', box);
   const labelName = make('name', label);
   const labelSize = make('size', label);
+  const grips = new Map();
+  for (const name in GRIPS) grips.set(make(`grip ${name}`, box), GRIPS[name]);
   const hint = make('bar hint', ui);
   const toast = make('bar toast', ui);
   const mark = make('key mark', toast);
@@ -149,14 +180,23 @@
 
   item('image', ['mouse'], 'Click to copy as PNG');
   item('text', [MAC ? '⌘' : 'Alt', 'mouse'], 'To copy text');
+  item('area', [MAC ? '⇧' : 'Shift', 'mouse'], 'To resize');
   item('', ['up', 'down'], 'Go through HTML');
-  item('', ['Del'], 'Remove');
-  item('', ['Esc'], 'Close');
+  item('remove', ['Del'], 'Remove');
+  item('close', ['Esc'], 'Close');
+  item('tune copy', ['Enter'], 'Copy as PNG');
+  item('tune', ['mouse'], 'Drag the edges to resize');
+  item('tune', ['Esc'], 'Back');
 
   let hit = null;
   let current = null;
   let trail = [];
   let point = null;
+  let shift = NONE;
+  let locked = false;
+  let drag = null;
+  let press = null;
+  let skipClick = false;
   let busy = false;
   let cancelled = false;
   let frame = 0;
@@ -186,12 +226,21 @@
     return node;
   };
 
+  const areaOf = (node) => {
+    const rect = node.getBoundingClientRect();
+    const left = rect.left + shift.left;
+    const top = rect.top + shift.top;
+    const right = rect.right + shift.right;
+    const bottom = rect.bottom + shift.bottom;
+    return { left, top, right, bottom, width: right - left, height: bottom - top };
+  };
+
   const draw = () => {
     if (!current || !current.isConnected) {
       box.classList.remove('on');
       return;
     }
-    const rect = current.getBoundingClientRect();
+    const rect = areaOf(current);
     const tag = current.tagName.toLowerCase();
     box.style.left = `${rect.left}px`;
     box.style.top = `${rect.top}px`;
@@ -200,16 +249,19 @@
     labelName.textContent = current.id ? `${tag}#${current.id}` : current.classList[0] ? `${tag}.${current.classList[0]}` : tag;
     labelSize.textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
     label.classList.toggle('inside', rect.top < 30);
+    label.classList.toggle('free', shift !== NONE);
     box.classList.add('on');
   };
 
   const retarget = () => {
     if (!point || busy) return;
-    const next = deepest(point.x, point.y);
-    if (next !== hit) {
-      hit = next;
-      current = next;
-      trail = [];
+    if (!locked) {
+      const next = deepest(point.x, point.y);
+      if (next !== hit) {
+        hit = next;
+        current = next;
+        trail = [];
+      }
     }
     draw();
   };
@@ -340,7 +392,7 @@
 
   const visiblePart = (node, clippers, reserve) => {
     const view = document.scrollingElement || document.documentElement;
-    const rect = node.getBoundingClientRect();
+    const rect = areaOf(node);
     let left = Math.max(rect.left, 0);
     let top = Math.max(rect.top, 0);
     let right = Math.min(rect.right, view.clientWidth);
@@ -363,7 +415,7 @@
 
   const reveal = (node, chain, x, y) => {
     for (const clipper of chain.clippers) {
-      const rect = node.getBoundingClientRect();
+      const rect = areaOf(node);
       const edge = clipper.getBoundingClientRect();
       clipper.scrollTo({
         left: clipper.scrollLeft + rect.left + x - edge.left - clipper.clientLeft,
@@ -372,7 +424,7 @@
       });
     }
     if (chain.pinned) return;
-    const rect = node.getBoundingClientRect();
+    const rect = areaOf(node);
     window.scrollTo({ left: scrollX + rect.left + x, top: scrollY + rect.top + y, behavior: 'instant' });
   };
 
@@ -394,12 +446,13 @@
       const tiled = !covers(visiblePart(node, chain.clippers, 0));
       if (tiled) {
         for (const layer of layers.sticky) patch(layer, UNSTUCK);
+        if (shift.left || shift.top) for (const layer of layers.fixed) patch(layer, HIDDEN);
         if (view.clientHeight >= 320 && (!chain.pinned || chain.clippers.length)) {
           reserve = PROGRESS_STRIP;
           ui.classList.add('capturing');
         }
       }
-      const { width, height } = node.getBoundingClientRect();
+      const { width, height } = areaOf(node);
       if (width < 1 || height < 1) throw new Error('Element is not visible');
       if (tiled) {
         reveal(node, chain, 0, 0);
@@ -526,9 +579,121 @@
     draw();
   };
 
+  const lock = () => {
+    locked = true;
+    ui.classList.remove('alt', 'shift');
+    ui.classList.add('locked');
+    draw();
+  };
+
+  const release = () => {
+    drag = null;
+    host.style.setProperty('cursor', 'crosshair', 'important');
+    host.style.setProperty('pointer-events', 'none', 'important');
+    ui.classList.remove('dragging');
+  };
+
+  const unlock = () => {
+    if (drag) skipClick = true;
+    release();
+    locked = false;
+    shift = NONE;
+    ui.classList.remove('locked');
+    hit = null;
+    retarget();
+  };
+
+  const holds = (node, area, grew) => {
+    const rect = node.getBoundingClientRect();
+    if (area.left < rect.left - 0.5 || area.top < rect.top - 0.5 || area.right > rect.right + 0.5 || area.bottom > rect.bottom + 0.5) return false;
+    return chainOf(node).clippers.every((clipper) => {
+      const edge = clipper.getBoundingClientRect();
+      const left = edge.left + clipper.clientLeft;
+      const top = edge.top + clipper.clientTop;
+      if (grew.left && area.left < left - 0.5) return false;
+      if (grew.top && area.top < top - 0.5) return false;
+      if (grew.right && area.right > left + clipper.clientWidth + 0.5) return false;
+      if (grew.bottom && area.bottom > top + clipper.clientHeight + 0.5) return false;
+      return true;
+    });
+  };
+
+  const settle = (grew) => {
+    if (!shift.left && !shift.top && !shift.right && !shift.bottom) {
+      shift = NONE;
+      return;
+    }
+    const area = areaOf(current);
+    let node = current;
+    while (node !== document.documentElement && !holds(node, area, grew)) node = parentOf(node) || document.documentElement;
+    if (node === current) return;
+    const rect = node.getBoundingClientRect();
+    shift = { left: area.left - rect.left, top: area.top - rect.top, right: area.right - rect.right, bottom: area.bottom - rect.bottom };
+    current = node;
+    trail = [];
+  };
+
   const wantsText = (event) => (MAC ? event.metaKey : event.altKey);
 
-  const setMode = (event) => ui.classList.toggle('alt', wantsText(event));
+  const setMode = (event) => {
+    const text = !locked && wantsText(event);
+    ui.classList.toggle('alt', text);
+    ui.classList.toggle('shift', !locked && !text && event.shiftKey);
+  };
+
+  const onDown = (event) => {
+    swallow(event);
+    skipClick = false;
+    press = { x: event.clientX, y: event.clientY };
+    if (busy || !locked || event.button !== 0) return;
+    const grip = root.elementFromPoint(event.clientX, event.clientY);
+    const pull = grips.get(grip);
+    if (!pull) return;
+    const area = areaOf(current);
+    drag = {
+      pull,
+      start: shift,
+      dx: pull.includes('left') ? event.clientX - area.left : pull.includes('right') ? event.clientX - area.right : 0,
+      dy: pull.includes('top') ? event.clientY - area.top : pull.includes('bottom') ? event.clientY - area.bottom : 0,
+    };
+    host.style.setProperty('cursor', getComputedStyle(grip).cursor, 'important');
+    host.style.setProperty('pointer-events', 'auto', 'important');
+    ui.classList.add('dragging');
+  };
+
+  const onDrag = (event) => {
+    swallow(event);
+    if (!drag) return;
+    const view = document.scrollingElement || document.documentElement;
+    const rect = current.getBoundingClientRect();
+    const area = areaOf(current);
+    const x = Math.round(Math.min(Math.max(event.clientX - drag.dx, 0), view.clientWidth));
+    const y = Math.round(Math.min(Math.max(event.clientY - drag.dy, 0), view.clientHeight));
+    const next = { ...shift };
+    for (const side of drag.pull) {
+      if (side === 'left') next.left = Math.min(x, area.right - MIN_SIDE) - rect.left;
+      else if (side === 'right') next.right = Math.max(x, area.left + MIN_SIDE) - rect.right;
+      else if (side === 'top') next.top = Math.min(y, area.bottom - MIN_SIDE) - rect.top;
+      else next.bottom = Math.max(y, area.top + MIN_SIDE) - rect.bottom;
+    }
+    shift = next;
+    point = { x: event.clientX, y: event.clientY };
+    hint.classList.toggle('top', point.y > innerHeight - 90);
+    draw();
+  };
+
+  const onUp = (event) => {
+    swallow(event);
+    if (!drag) {
+      if (locked && press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4) skipClick = true;
+      return;
+    }
+    const { start } = drag;
+    release();
+    skipClick = true;
+    settle({ left: shift.left < start.left, top: shift.top < start.top, right: shift.right > start.right, bottom: shift.bottom > start.bottom });
+    draw();
+  };
 
   const onMove = (event) => {
     swallow(event);
@@ -557,11 +722,19 @@
       swallow(event);
       window.addEventListener('keyup', swallow, { capture: true, once: true });
       if (busy) cancelled = true;
+      else if (locked) unlock();
       else stop();
       return;
     }
     if (busy) {
       swallow(event);
+      return;
+    }
+    if (locked) {
+      if (event.key !== 'Enter') return;
+      swallow(event);
+      window.addEventListener('keyup', swallow, { capture: true, once: true });
+      copy(false);
       return;
     }
     if (event.key.toLowerCase() === 'z' && (MAC ? event.metaKey : event.ctrlKey)) {
@@ -589,17 +762,10 @@
     }
   };
 
-  const onClick = async (event) => {
-    swallow(event);
-    if (busy) return;
-    if (!current) {
-      point = { x: event.clientX, y: event.clientY };
-      retarget();
-    }
-    if (!current) return;
+  const copy = async (asText) => {
     busy = true;
     try {
-      if (!wantsText(event)) {
+      if (!asText) {
         const result = await copyImage(current);
         finish('PNG copied', result.complete ? `${result.width} × ${result.height}` : 'part of it is hidden by the page');
       } else {
@@ -618,12 +784,36 @@
     }
   };
 
+  const onClick = (event) => {
+    swallow(event);
+    if (busy) return;
+    if (skipClick) {
+      skipClick = false;
+      return;
+    }
+    if (locked) {
+      const area = areaOf(current);
+      if (event.clientX >= area.left && event.clientX <= area.right && event.clientY >= area.top && event.clientY <= area.bottom) {
+        copy(false);
+      } else {
+        point = { x: event.clientX, y: event.clientY };
+        unlock();
+      }
+      return;
+    }
+    if (!current) {
+      point = { x: event.clientX, y: event.clientY };
+      retarget();
+    }
+    if (!current) return;
+    if (wantsText(event)) copy(true);
+    else if (event.shiftKey) lock();
+    else copy(false);
+  };
+
   const quiet = [
     'mousedown',
     'mouseup',
-    'pointerdown',
-    'pointerup',
-    'pointermove',
     'dblclick',
     'auxclick',
     'mouseover',
@@ -638,6 +828,10 @@
 
   const listeners = [
     ['mousemove', onMove],
+    ['pointerdown', onDown],
+    ['pointermove', onDrag],
+    ['pointerup', onUp],
+    ['pointercancel', onUp],
     ['click', onClick],
     ['keydown', onKey],
     ['keyup', onKeyUp],

@@ -194,6 +194,20 @@ const centerOf = (id) =>
     return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
   }, id);
 const scrollOf = () => page.evaluate(() => [scrollX, scrollY]);
+const shiftClick = async (x, y) => {
+  await page.keyboard.down('Shift');
+  await page.mouse.click(x, y);
+  await page.keyboard.up('Shift');
+  await page.waitForTimeout(200);
+};
+const dragTo = async (fromX, fromY, toX, toY) => {
+  await page.mouse.move(fromX, fromY);
+  await page.mouse.down();
+  await page.mouse.move((fromX + toX) / 2, (fromY + toY) / 2);
+  await page.mouse.move(toX, toY);
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+};
 
 try {
   await page.goto(`${base}/`);
@@ -471,7 +485,7 @@ try {
 
   await activate();
   await page.mouse.move(140, 80);
-  await shot('16-hint-with-remove', { x: 100, y: 630, width: 800, height: 70 });
+  await shot('16-hint-with-remove', { x: 0, y: 630, width: 1000, height: 70 });
   await page.keyboard.press('Delete');
   await page.waitForTimeout(150);
   check('16 delete hides the element, picker stays open', (await displayOf('red')) === 'none' && (await isActive()), await displayOf('red'));
@@ -501,6 +515,161 @@ try {
   const i16 = await clipImage();
   check('16 png of the parent comes without the removed child', Math.abs(i16.w - cardAfter.w * dsf) <= 1 && Math.abs(i16.h - cardAfter.h * dsf) <= 1, { w: i16.w, h: i16.h, card: cardAfter });
   check('16 removed element stays hidden after the picker closes', (await displayOf('mail')) === 'none' && !(await isActive()));
+
+  await page.goto(`${base}/`);
+  await page.bringToFront();
+  const RED = [255, 0, 0, 255];
+  const WHITE = [255, 255, 255];
+
+  await sentinel();
+  await activate();
+  await page.mouse.move(140, 80);
+  await page.keyboard.down('Shift');
+  await page.mouse.move(141, 80);
+  await shot('17-shift-held');
+  await page.keyboard.up('Shift');
+  await shiftClick(141, 80);
+  check('17 shift+click locks the selection instead of copying', (await isActive()) && (await clipText()) === 'SENTINEL');
+  await shot('17-locked');
+  await dragTo(240, 80, 190, 80);
+  check('17 dragging an edge does not copy', (await isActive()) && (await clipText()) === 'SENTINEL');
+  await shot('17-shrunk');
+  await page.keyboard.press('Enter');
+  await waitDone();
+  const i17a = await clipImage();
+  check('17 enter copies the shrunk area', i17a.w === 150 * dsf && i17a.h === 100 * dsf && same(i17a.center, RED) && same(i17a.br, RED), i17a);
+
+  await sentinel();
+  await activate();
+  await page.mouse.move(140, 80);
+  await shiftClick(140, 80);
+  await dragTo(240, 130, 280, 150);
+  await shot('17-grown');
+  await page.mouse.click(140, 80);
+  await waitDone();
+  const i17b = await clipImage([
+    [100 * dsf, 50 * dsf],
+    [220 * dsf, 50 * dsf],
+    [100 * dsf, 110 * dsf],
+  ]);
+  const bad17b = mismatches(i17b, [[255, 0, 0], WHITE, WHITE]);
+  check('17 click inside copies the grown area with its surroundings', i17b.w === 240 * dsf && i17b.h === 120 * dsf && bad17b.length === 0, { w: i17b.w, h: i17b.h, bad17b });
+
+  await sentinel();
+  await activate();
+  await page.mouse.move(140, 80);
+  await shiftClick(140, 80);
+  await page.mouse.click(800, 500);
+  await page.waitForTimeout(200);
+  check('17 click outside unlocks without copying', (await isActive()) && (await clipText()) === 'SENTINEL');
+  await page.mouse.move(380, 60);
+  await imageClick(380, 60);
+  const i17c = await clipImage();
+  check('17 picking works again after unlocking', i17c.w === 160 * dsf && i17c.h === 60 * dsf && same(i17c.center, [0, 128, 0, 255]), i17c);
+
+  await activate();
+  await page.mouse.move(140, 80);
+  await shiftClick(140, 80);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const openAfterFirstEsc = await isActive();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  check('17 esc leaves the locked selection first, then closes', openAfterFirstEsc && !(await isActive()));
+
+  await sentinel();
+  await activate();
+  await page.mouse.move(140, 80);
+  await shiftClick(140, 80);
+  await page.mouse.move(240, 80);
+  await page.mouse.down();
+  await page.mouse.move(200, 80);
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await page.waitForTimeout(700);
+  check('17 esc in the middle of a drag does not copy', (await isActive()) && (await clipText()) === 'SENTINEL');
+  await page.keyboard.press('Escape');
+
+  for (const width of [800, 720]) {
+    await page.setViewportSize({ width, height: 700 });
+    await activate();
+    await page.mouse.move(140, 80);
+    await page.waitForTimeout(300);
+    await shot(`17-hint-at-${width}`, { x: 0, y: 630, width, height: 70 });
+    await page.keyboard.press('Escape');
+  }
+  await page.setViewportSize({ width: 1000, height: 700 });
+
+  await page.goto(`${base}/long`);
+  await page.bringToFront();
+  const inner = await page.evaluate(() => {
+    const r = document.getElementById('inner').getBoundingClientRect();
+    return { left: r.left, right: r.right };
+  });
+  const stripeX = inner.left + 140;
+
+  await sentinel();
+  await activate();
+  await page.mouse.move(stripeX, 520);
+  await shiftClick(stripeX, 520);
+  await dragTo(stripeX, 570, stripeX, 640);
+  await shot('18-pulled-out-of-panel');
+  await page.keyboard.press('Enter');
+  await waitDone();
+  const i18a = await clipImage([
+    [140 * dsf, 50 * dsf],
+    [140 * dsf, 105 * dsf],
+    [140 * dsf, 150 * dsf],
+  ]);
+  const bad18a = mismatches(i18a, [innerColor(5), innerColor(6), WHITE]);
+  check('18 area pulled out of a scrolling panel is shot as seen', i18a.w === 280 * dsf && i18a.h === 170 * dsf && bad18a.length === 0, { w: i18a.w, h: i18a.h, bad18a });
+  check('18 panel scroll untouched', (await page.evaluate(() => document.getElementById('panel').scrollTop)) === 130);
+
+  await sentinel();
+  await activate();
+  await page.mouse.move(stripeX, 300);
+  await page.keyboard.press('ArrowUp');
+  await shiftClick(stripeX, 300);
+  await dragTo(inner.right, 300, inner.right - 80, 300);
+  await page.keyboard.press('Enter');
+  await waitDone();
+  const i18b = await clipImage(Array.from({ length: 15 }, (_, i) => [100 * dsf, (i * 100 + 50) * dsf]));
+  const bad18b = mismatches(i18b, Array.from({ length: 15 }, (_, i) => innerColor(i)));
+  check('18 shrunk element in a panel is still stitched whole', i18b.w === 200 * dsf && i18b.h === 1500 * dsf && bad18b.length === 0, { w: i18b.w, h: i18b.h, bad18b });
+  check('18 panel and page scroll restored', (await page.evaluate(() => document.getElementById('panel').scrollTop)) === 130 && same(await scrollOf(), [0, 0]));
+
+  await sentinel();
+  await activate();
+  await page.mouse.move(190, 450);
+  await page.keyboard.press('ArrowUp');
+  await shiftClick(190, 450);
+  await dragTo(190, 300, 190, 400);
+  await page.keyboard.press('Enter');
+  await waitDone();
+  const i18c = await clipImage(
+    Array.from({ length: 17 }, (_, i) => [150 * dsf, (i * 100 + 50) * dsf]).concat([
+      [150 * dsf, 605 * dsf],
+      [150 * dsf, 1305 * dsf],
+    ]),
+  );
+  const bad18c = mismatches(i18c, Array.from({ length: 17 }, (_, i) => longColor(i + 1)).concat([longColor(7), longColor(14)]));
+  check('18 long element cut from the top is stitched from the new edge', i18c.w === 300 * dsf && i18c.h === 1700 * dsf && bad18c.length === 0, { w: i18c.w, h: i18c.h, bad18c });
+
+  await sentinel();
+  await activate();
+  await page.mouse.move(500, 650);
+  await shiftClick(500, 650);
+  await dragTo(500, 2, 500, 202);
+  await page.keyboard.press('Enter');
+  await waitDone();
+  const i18d = await clipImage([
+    [500 * dsf, 30 * dsf],
+    [190 * dsf, 150 * dsf],
+    [190 * dsf, 1150 * dsf],
+  ]);
+  const bad18d = mismatches(i18d, [WHITE, longColor(0), longColor(10)]);
+  check('18 page cut from the top comes without the fixed bar', i18d.h === 7000 * dsf && bad18d.length === 0, { w: i18d.w, h: i18d.h, bad18d });
+  check('18 scroll restored', same(await scrollOf(), [0, 0]), await scrollOf());
 } catch (error) {
   check('run completed', false, String(error?.stack || error));
 } finally {
