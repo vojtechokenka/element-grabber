@@ -555,6 +555,31 @@ try {
   const bad17b = mismatches(i17b, [[255, 0, 0], WHITE, WHITE]);
   check('17 click inside copies the grown area with its surroundings', i17b.w === 240 * dsf && i17b.h === 120 * dsf && bad17b.length === 0, { w: i17b.w, h: i17b.h, bad17b });
 
+  for (const [name, key, fromX, fromY, toX, toY, w, h] of [
+    ['shift on an edge grows every side', 'Shift', 240, 80, 260, 80, 240, 140],
+    ['shift on a corner follows the longer pull', 'Shift', 240, 130, 250, 150, 240, 140],
+    ['shift shrinks every side too', 'Shift', 240, 80, 230, 80, 180, 80],
+    ['alt on an edge grows both sides of one axis', 'Alt', 240, 80, 260, 80, 240, 100],
+    ['alt on a corner grows each axis by its own pull', 'Alt', 240, 130, 250, 150, 220, 140],
+  ]) {
+    await sentinel();
+    await activate();
+    await page.mouse.move(140, 80);
+    await shiftClick(140, 80);
+    await page.mouse.move(fromX, fromY);
+    await page.mouse.down();
+    await page.keyboard.down(key);
+    await page.mouse.move(toX, toY);
+    if (key === 'Shift' && toX === 260) await shot('20-grow-all-sides');
+    await page.mouse.up();
+    await page.keyboard.up(key);
+    await page.waitForTimeout(200);
+    await page.keyboard.press('Enter');
+    await waitDone();
+    const image = await clipImage();
+    check(`20 ${name}`, image.w === w * dsf && image.h === h * dsf, { w: image.w, h: image.h });
+  }
+
   await sentinel();
   await activate();
   await page.mouse.move(140, 80);

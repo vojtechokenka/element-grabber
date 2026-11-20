@@ -17,6 +17,8 @@
     .size { color: rgba(255, 255, 255, 0.6); font-weight: 500; }
     .label.free .name { display: none; }
     .label.free .size { color: #fff; }
+    .grow { color: rgba(255, 255, 255, 0.6); font-weight: 500; }
+    .grow:empty { display: none; }
     .grip { position: absolute; display: none; }
     .ui.shift .grip, .ui.locked .grip { display: block; }
     .ui.locked .grip { pointer-events: auto; }
@@ -150,6 +152,7 @@
   const label = make('label', box);
   const labelName = make('name', label);
   const labelSize = make('size', label);
+  const labelGrow = make('grow', label);
   const grips = new Map();
   for (const name in GRIPS) grips.set(make(`grip ${name}`, box), GRIPS[name]);
   const hint = make('bar hint', ui);
@@ -186,6 +189,8 @@
   item('close', ['Esc'], 'Close');
   item('tune copy', ['Enter'], 'Copy as PNG');
   item('tune', ['mouse'], 'Drag the edges to resize');
+  item('tune', [MAC ? '⇧' : 'Shift'], 'All sides');
+  item('tune', [MAC ? '⌥' : 'Alt'], 'One axis');
   item('tune', ['Esc'], 'Back');
 
   let hit = null;
@@ -588,6 +593,7 @@
 
   const release = () => {
     drag = null;
+    labelGrow.textContent = '';
     host.style.setProperty('cursor', 'crosshair', 'important');
     host.style.setProperty('pointer-events', 'none', 'important');
     ui.classList.remove('dragging');
@@ -653,6 +659,8 @@
     drag = {
       pull,
       start: shift,
+      px: event.clientX,
+      py: event.clientY,
       dx: pull.includes('left') ? event.clientX - area.left : pull.includes('right') ? event.clientX - area.right : 0,
       dy: pull.includes('top') ? event.clientY - area.top : pull.includes('bottom') ? event.clientY - area.bottom : 0,
     };
@@ -661,25 +669,65 @@
     ui.classList.add('dragging');
   };
 
+  const signed = (value) => `${value < 0 ? '−' : '+'}${Math.abs(Math.round(value))}`;
+
+  const resize = () => {
+    const { pull, start, all, axis } = drag;
+    const view = document.scrollingElement || document.documentElement;
+    const rect = current.getBoundingClientRect();
+    const from = { left: rect.left + start.left, top: rect.top + start.top, right: rect.right + start.right, bottom: rect.bottom + start.bottom };
+    const x = Math.round(Math.min(Math.max(drag.px - drag.dx, 0), view.clientWidth));
+    const y = Math.round(Math.min(Math.max(drag.py - drag.dy, 0), view.clientHeight));
+    const next = { ...start };
+    labelGrow.textContent = '';
+    if (!all && !axis) {
+      for (const side of pull) {
+        if (side === 'left') next.left = Math.min(x, from.right - MIN_SIDE) - rect.left;
+        else if (side === 'right') next.right = Math.max(x, from.left + MIN_SIDE) - rect.right;
+        else if (side === 'top') next.top = Math.min(y, from.bottom - MIN_SIDE) - rect.top;
+        else next.bottom = Math.max(y, from.top + MIN_SIDE) - rect.bottom;
+      }
+      shift = next;
+      return;
+    }
+    const least = { wide: (MIN_SIDE - (from.right - from.left)) / 2, tall: (MIN_SIDE - (from.bottom - from.top)) / 2 };
+    let wide = pull.includes('left') ? from.left - x : pull.includes('right') ? x - from.right : null;
+    let tall = pull.includes('top') ? from.top - y : pull.includes('bottom') ? y - from.bottom : null;
+    if (all) {
+      const both = wide === null ? tall : tall === null ? wide : Math.abs(wide) > Math.abs(tall) ? wide : tall;
+      wide = tall = Math.max(both, least.wide, least.tall);
+    } else {
+      if (wide !== null) wide = Math.max(wide, least.wide);
+      if (tall !== null) tall = Math.max(tall, least.tall);
+    }
+    if (wide !== null) {
+      next.left = Math.max(from.left - wide, Math.min(from.left, 0)) - rect.left;
+      next.right = Math.min(from.right + wide, Math.max(from.right, view.clientWidth)) - rect.right;
+    }
+    if (tall !== null) {
+      next.top = Math.max(from.top - tall, Math.min(from.top, 0)) - rect.top;
+      next.bottom = Math.min(from.bottom + tall, Math.max(from.bottom, view.clientHeight)) - rect.bottom;
+    }
+    shift = next;
+    labelGrow.textContent = `${all || tall === null ? signed(wide) : wide === null ? signed(tall) : `${signed(wide)} × ${signed(tall)}`} px`;
+  };
+
+  const tune = (event) => {
+    if (!drag) return;
+    drag.all = event.shiftKey;
+    drag.axis = !event.shiftKey && event.altKey;
+    resize();
+    draw();
+  };
+
   const onDrag = (event) => {
     swallow(event);
     if (!drag) return;
-    const view = document.scrollingElement || document.documentElement;
-    const rect = current.getBoundingClientRect();
-    const area = areaOf(current);
-    const x = Math.round(Math.min(Math.max(event.clientX - drag.dx, 0), view.clientWidth));
-    const y = Math.round(Math.min(Math.max(event.clientY - drag.dy, 0), view.clientHeight));
-    const next = { ...shift };
-    for (const side of drag.pull) {
-      if (side === 'left') next.left = Math.min(x, area.right - MIN_SIDE) - rect.left;
-      else if (side === 'right') next.right = Math.max(x, area.left + MIN_SIDE) - rect.right;
-      else if (side === 'top') next.top = Math.min(y, area.bottom - MIN_SIDE) - rect.top;
-      else next.bottom = Math.max(y, area.top + MIN_SIDE) - rect.bottom;
-    }
-    shift = next;
+    drag.px = event.clientX;
+    drag.py = event.clientY;
     point = { x: event.clientX, y: event.clientY };
     hint.classList.toggle('top', point.y > innerHeight - 90);
-    draw();
+    tune(event);
   };
 
   const onUp = (event) => {
@@ -709,11 +757,13 @@
 
   const onKeyUp = (event) => {
     setMode(event);
+    tune(event);
     if (event.key === 'Alt') swallow(event);
   };
 
   const onKey = (event) => {
     setMode(event);
+    tune(event);
     if (event.key === 'Alt') {
       swallow(event);
       return;
