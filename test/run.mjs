@@ -594,6 +594,26 @@ try {
   await page.waitForTimeout(150);
   check('17 esc leaves the locked selection first, then closes', openAfterFirstEsc && !(await isActive()));
 
+  await page.evaluate(() => {
+    const frame = document.createElement('iframe');
+    frame.id = 'typing';
+    frame.style.cssText = 'position:absolute;left:0;top:0;width:1px;height:1px;border:0';
+    document.body.append(frame);
+    frame.contentDocument.body.contentEditable = 'true';
+    frame.contentDocument.body.focus();
+  });
+  await activate();
+  await page.mouse.move(140, 80);
+  const focusInFrame = await page.evaluate(() => document.activeElement.id === 'typing');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  check('19 esc closes even when the keyboard focus sits in an iframe', focusInFrame && !(await isActive()));
+  if (await isActive()) await activate();
+  await page.evaluate(() => {
+    document.getElementById('typing').remove();
+    window.focus();
+  });
+
   await sentinel();
   await activate();
   await page.mouse.move(140, 80);

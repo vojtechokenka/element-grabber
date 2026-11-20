@@ -727,7 +727,7 @@
     }
     if (event.key === 'Escape') {
       swallow(event);
-      window.addEventListener('keyup', swallow, { capture: true, once: true });
+      (event.view || window).addEventListener('keyup', swallow, { capture: true, once: true });
       if (busy) cancelled = true;
       else if (locked) unlock();
       else stop();
@@ -740,7 +740,7 @@
     if (locked) {
       if (event.key !== 'Enter') return;
       swallow(event);
-      window.addEventListener('keyup', swallow, { capture: true, once: true });
+      (event.view || window).addEventListener('keyup', swallow, { capture: true, once: true });
       copy(false);
       return;
     }
@@ -848,8 +848,24 @@
     ...quiet.map((type) => [type, swallow]),
   ];
 
+  const frames = [];
+  for (const frame of document.querySelectorAll('iframe')) {
+    try {
+      const inner = frame.contentWindow;
+      inner.addEventListener('keydown', onKey, true);
+      inner.addEventListener('keyup', onKeyUp, true);
+      frames.push(inner);
+    } catch {}
+  }
+
   const deactivate = () => {
     for (const [type, handler] of listeners) window.removeEventListener(type, handler, true);
+    for (const inner of frames) {
+      try {
+        inner.removeEventListener('keydown', onKey, true);
+        inner.removeEventListener('keyup', onKeyUp, true);
+      } catch {}
+    }
     cancelAnimationFrame(frame);
     document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => sheet !== pageSheet);
     delete window.__elementGrabber;
