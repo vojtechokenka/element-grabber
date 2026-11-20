@@ -653,6 +653,8 @@
     drag = {
       pull,
       start: shift,
+      x: event.clientX,
+      y: event.clientY,
       dx: pull.includes('left') ? event.clientX - area.left : pull.includes('right') ? event.clientX - area.right : 0,
       dy: pull.includes('top') ? event.clientY - area.top : pull.includes('bottom') ? event.clientY - area.bottom : 0,
     };
@@ -670,7 +672,12 @@
     const x = Math.round(Math.min(Math.max(event.clientX - drag.dx, 0), view.clientWidth));
     const y = Math.round(Math.min(Math.max(event.clientY - drag.dy, 0), view.clientHeight));
     const next = { ...shift };
+    const wide = Math.abs(event.clientX - drag.x) >= Math.abs(event.clientY - drag.y);
     for (const side of drag.pull) {
+      if (event.shiftKey && drag.pull.length > 1 && wide !== (side === 'left' || side === 'right')) {
+        next[side] = drag.start[side];
+        continue;
+      }
       if (side === 'left') next.left = Math.min(x, area.right - MIN_SIDE) - rect.left;
       else if (side === 'right') next.right = Math.max(x, area.left + MIN_SIDE) - rect.right;
       else if (side === 'top') next.top = Math.min(y, area.bottom - MIN_SIDE) - rect.top;
