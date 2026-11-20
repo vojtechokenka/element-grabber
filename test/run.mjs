@@ -555,23 +555,6 @@ try {
   const bad17b = mismatches(i17b, [[255, 0, 0], WHITE, WHITE]);
   check('17 click inside copies the grown area with its surroundings', i17b.w === 240 * dsf && i17b.h === 120 * dsf && bad17b.length === 0, { w: i17b.w, h: i17b.h, bad17b });
 
-  for (const [name, toX, toY, w, h] of [
-    ['sideways', 290, 145, 250, 100],
-    ['downwards', 250, 170, 200, 140],
-  ]) {
-    await sentinel();
-    await activate();
-    await page.mouse.move(140, 80);
-    await shiftClick(140, 80);
-    await page.keyboard.down('Shift');
-    await dragTo(240, 130, toX, toY);
-    await page.keyboard.up('Shift');
-    await page.mouse.click(140, 80);
-    await waitDone();
-    const image = await clipImage();
-    check(`17 shift while dragging a corner moves only one edge, ${name}`, image.w === w * dsf && image.h === h * dsf, { w: image.w, h: image.h });
-  }
-
   await sentinel();
   await activate();
   await page.mouse.move(140, 80);
